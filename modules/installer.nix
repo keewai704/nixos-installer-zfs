@@ -88,6 +88,8 @@ in
       "noctalia.service"
     ];
     partOf = [ "graphical-session.target" ];
+    # Inherit the login environment imported by start-umbriel.
+    environment.PATH = lib.mkForce null;
     serviceConfig = {
       ExecStart = "${installer}/bin/nixos-zfs-installer";
       Restart = "no";

@@ -98,6 +98,7 @@ in
   environment.etc."xdg/umbriel/config.toml".text = ''
     [general]
     xwayland = true
+    show_cheatsheet = false
     [appearance]
     border_width = 2
     corner_radius = 12

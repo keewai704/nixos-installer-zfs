@@ -73,7 +73,7 @@ class Installer(QWidget):
         layout = self.page("NixOSへようこそ", "このウィザードで、UmbrielとNoctalia v5を使うNixOSをZFSへインストールします。")
         layout.addWidget(QLabel("1. ネットワークに接続\n2. インストール先を選択\n3. ユーザーと地域を設定\n4. ディスク消去を確認してインストール"))
         network = QPushButton("ネットワーク接続を設定")
-        network.clicked.connect(lambda: QProcess.startDetached("nm-connection-editor", []))
+        network.clicked.connect(lambda: QProcess.startDetached("/run/current-system/sw/bin/nm-connection-editor", []))
         layout.addWidget(network, alignment=Qt.AlignmentFlag.AlignLeft)
         text = QLabel("必要条件: UEFI起動、32 GiB以上のディスク、インターネット接続。\n選択したディスク全体を消去します。既存データの保持・暗号化・ミラー・デュアルブートには対応していません。")
         text.setWordWrap(True)
@@ -171,7 +171,7 @@ class Installer(QWidget):
     def make_complete(self):
         layout = self.page("インストールが完了しました", "USB/ISOを取り外して再起動してください。作成したユーザーで、Umbriel + Noctalia v5のデスクトップにログインできます。")
         reboot = QPushButton("再起動 (&R)")
-        reboot.clicked.connect(lambda: QProcess.startDetached("sudo", ["-n", "systemctl", "reboot"]))
+        reboot.clicked.connect(lambda: QProcess.startDetached("/run/wrappers/bin/sudo", ["-n", "systemctl", "reboot"]))
         layout.addWidget(reboot, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()
 
@@ -235,7 +235,7 @@ class Installer(QWidget):
         self.process.finished.connect(self.finished)
         self.process.errorOccurred.connect(self.process_error)
         self.pending = ""
-        self.process.start("sudo", ["-n", sys.executable, str(Path(__file__).with_name("backend.py"))])
+        self.process.start("/run/wrappers/bin/sudo", ["-n", sys.executable, str(Path(__file__).with_name("backend.py"))])
         if not self.process.waitForStarted(10000):
             return
         self.process.write(json.dumps(request).encode())
@@ -259,6 +259,8 @@ class Installer(QWidget):
         if error == QProcess.ProcessError.FailedToStart:
             self.busy = False
             self.error.setText("インストール処理を開始できませんでした。")
+            self.log.appendPlainText(self.process.errorString())
+            print("GUI_INSTALL_FAILED: " + self.process.errorString(), flush=True)
 
     def finished(self, code, status):
         self.read_output()
