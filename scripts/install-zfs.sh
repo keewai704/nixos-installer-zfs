@@ -45,6 +45,11 @@ fi
 if findmnt --mountpoint /mnt >/dev/null; then die "/mnt is already mounted."; fi
 modprobe zfs
 if zpool list -H -o name 2>/dev/null | grep -qx rpool; then die "rpool is already imported."; fi
+while IFS= read -r member; do
+  if lsblk -srnpo NAME "$member" | grep -Fxq -- "$disk"; then
+    die "The disk belongs to an imported ZFS pool. Export that pool first."
+  fi
+done < <(zpool status -LP 2>/dev/null | awk '$1 ~ /^\/dev\// { print $1 }')
 [[ -d /etc/nixos-installer/source ]] || die "Run from this installer ISO."
 
 lsblk -o NAME,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS "$disk"
@@ -63,6 +68,7 @@ udevadm settle
 esp="/dev/disk/by-partuuid/$esp_uuid"
 zfs_partition="/dev/disk/by-partuuid/$zfs_uuid"
 [[ -b $esp && -b $zfs_partition ]] || die "Partition devices did not appear."
+wipefs --all "$esp" "$zfs_partition"
 
 zpool create -o ashift=12 -o autotrim=on -O compression=zstd -O atime=off \
   -O xattr=sa -O acltype=posixacl -O mountpoint=none -R /mnt rpool "$zfs_partition"
