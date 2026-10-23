@@ -24,7 +24,7 @@ let
         --prefix QT_PLUGIN_PATH : ${pkgs.qt6.qtwayland}/${pkgs.qt6.qtbase.qtPluginPrefix} \
         --prefix PATH : ${
           lib.makeBinPath [
-            pkgs.whois
+            pkgs.mkpasswd
             pkgs.gptfdisk
             pkgs.dosfstools
             pkgs.util-linux
@@ -77,7 +77,7 @@ in
   '';
   environment.systemPackages = [
     installer
-    pkgs.whois
+    pkgs.mkpasswd
   ];
   system.build.installerApp = installer;
   systemd.user.services.zfs-installer = {

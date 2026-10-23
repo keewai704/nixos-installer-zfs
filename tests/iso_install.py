@@ -142,6 +142,8 @@ class VM:
 
     def desktop(self, username="nixos"):
         command = self.user("systemctl --user is-active umbriel.service noctalia.service", username)
+        command += " && " + self.user("noctalia msg color-scheme-get", username)
+        command += " && " + self.user("umbriel layers", username) + " | grep -Fq noctalia-bar"
         self.run("timeout 180 bash -c " + shlex.quote(f"until {command}; do sleep 2; done"), timeout=200)
         self.run("umbriel --version && noctalia --version")
 
@@ -209,6 +211,7 @@ def main():
         tools(vm)
         vm.desktop()
         vm.page("Welcome")
+        vm.run(vm.user("umbriel windows") + " | grep -F 'NixOS Installer'")
         vm.screenshot("bios-desktop")
         vm.stop()
         results["tests"].append("BIOS: actual ISO boots into Umbriel + Noctalia v5 and the graphical wizard; CachyOS, ZFS and all four CLIs work")
@@ -267,6 +270,7 @@ def main():
         vm.screenshot("installed-login")
         # ReGreet selects the sole regular user. Log in with the GUI-created password.
         vm.qmp.key("ret")
+        time.sleep(2)
         vm.qmp.text(password)
         vm.qmp.key("ret")
         vm.desktop("ciuser")

@@ -144,6 +144,7 @@ class Installer(QWidget):
     def make_review(self):
         layout = self.page("インストール内容を確認", "ここで開始するまでは、ディスクを変更しません。")
         self.summary = QLabel()
+        self.summary.setTextFormat(Qt.TextFormat.PlainText)
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
         self.erase = QCheckBox("選択したディスクの全データ消去に同意する (&E)")
