@@ -147,6 +147,9 @@ def main():
         vm.run("nix-store --import < /run/testdata/closure.nar", timeout=1800)
         vm.run("printf 'ERASE /dev/vda\\n' | install-zfs --disk /dev/vda --hostname ci-zfs --prepare-only", timeout=600)
         vm.run("grep -q 'ci-zfs' /mnt/etc/nixos/machine.nix")
+        # Evaluation happens in the target store as well. Archive locked input
+        # sources there before nixos-install, without changing the generated lock.
+        vm.run("nix flake archive --offline --no-write-lock-file --to /mnt /mnt/etc/nixos", timeout=600)
         # nixos-install builds in /mnt's store and copies existing packages from
         # the live store through its local substituter. QEMU has no network.
         vm.run("nixos-install --flake /mnt/etc/nixos#installed --no-root-passwd --no-channel-copy --option substituters 'auto?trusted=1' --option accept-flake-config false", timeout=2400)
