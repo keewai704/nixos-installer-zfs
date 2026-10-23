@@ -138,7 +138,15 @@ class VM:
         self.child.close()
 
     def user(self, command, username="nixos"):
-        return f"runuser -u {username} -- env XDG_RUNTIME_DIR=/run/user/$(id -u {username}) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u {username})/bus {command}"
+        # A serial login does not inherit the graphical session's IPC variables.
+        session = (
+            'for sock in "$XDG_RUNTIME_DIR"/umbriel-*.sock; do '
+            'if [ -S "$sock" ]; then '
+            'export UMBRIEL_SOCKET="$sock"; name=${sock##*/}; '
+            'name=${name#umbriel-}; export WAYLAND_DISPLAY=${name%.sock}; '
+            'break; fi; done; exec ' + command
+        )
+        return f"runuser -u {username} -- env XDG_RUNTIME_DIR=/run/user/$(id -u {username}) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u {username})/bus bash -c {shlex.quote(session)}"
 
     def desktop(self, username="nixos"):
         command = self.user("systemctl --user is-active umbriel.service noctalia.service", username)
