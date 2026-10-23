@@ -70,12 +70,13 @@ class VM:
             self.child.sendline("root")
             self.child.expect_exact("[root@ci-zfs:")
         self.child.sendline("stty -echo")
-        self.run("id -u | grep -qx 0")
+        self.run("id -u | grep -qx 0", timeout=30)
 
     def run(self, command, *, timeout=600, ok=True):
         marker = "__STATUS_" + uuid.uuid4().hex
         self.child.sendline(f"{command}; rc=$?; printf '\\n{marker}:%s\\n' \"$rc\"")
-        self.child.expect(re.escape(marker) + r":([0-9]+)\r?\n", timeout=timeout)
+        # Guest serial output and the host PTY can both translate LF to CRLF.
+        self.child.expect(re.escape(marker) + r":([0-9]+)\r*\n", timeout=timeout)
         output, code = self.child.before, int(self.child.match.group(1))
         print(f"guest exit={code}: {command}", flush=True)
         if ok and code:
