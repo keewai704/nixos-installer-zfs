@@ -70,18 +70,16 @@ jobs:
           nix develop .#ci --command bash -c 'git ls-files "*.nix" -z | xargs -0 nixfmt --check'
           python3 -m py_compile tests/iso_install.py
 
-      - name: Build the installer ISO and offline installation inputs
+      - name: Build the installer ISO and installed-system package cache
         run: |
           nix build --no-write-lock-file --print-build-logs .#iso -o result-iso
           nix build --no-write-lock-file --print-build-logs .#install-closure -o result-install
-          nix build --no-write-lock-file --print-build-logs .#install-build-inputs -o result-install-build-inputs
 
       - name: Export built packages before running the VM tests
         if: github.event_name != 'pull_request' && steps.nix-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .ci-cache
-          nix-store --query --requisites "$(readlink -f result-install)" \
-            "$(readlink -f result-install-build-inputs)" > .ci-cache/paths
+          nix-store --query --requisites "$(readlink -f result-install)" > .ci-cache/paths
           mapfile -t cache_paths < .ci-cache/paths
           test "${#cache_paths[@]}" -gt 0
           nix-store --export "${cache_paths[@]}" | gzip -1 > .ci-cache/closure.nar.gz

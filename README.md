@@ -104,14 +104,12 @@ ls result-iso/iso/
 3. UEFI環境で`install-zfs --prepare-only`を実行し、実際に生成されたflakeを`nixos-install`でZFSへインストールできること。
 4. ISOを取り外した状態でインストール先から起動し、ZFSの`/`・`/home`・`/nix`、保存データ、CLI、プールの正常性、失敗したsystemdユニットがないこと。
 
-VMのネットワークは無効です。ホストで用意した固定済みパッケージと入力ソースを読み取り専用9p共有から渡します。インストール自体は生成したflakeをVM内で評価・ビルドするため、単なる設定評価やISOの存在確認ではありません。テスト用にVMのコンソールパスワードだけを空にします。実機向け設定にはその変更を含めません。実機固有のストレージ・Wi-Fi・GPU・Secure Bootの互換性は、このVMテストの対象外です。
+UEFIでのインストール検証にはQEMUのユーザーネットワークを使い、実機での利用条件と同じく、固定済みの入力と設定済みの公開キャッシュを取得します。ポートの転送はありません。生成したflakeをVM内で評価・ビルドし、`nixos-install`でインストールします。BIOS起動と、ISOを外したインストール後の起動はNICなしで確認します。後者のテスト用にだけターゲットのコンソールパスワードを空にします。実機向け設定にはその変更を含めません。実機固有のストレージ・Wi-Fi・GPU・Secure Bootの互換性は、このVMテストの対象外です。
 
 再現手順:
 
 ```sh
 nix build .#iso -o result-iso -L
-nix build .#install-closure -o result-install -L
-nix build .#install-build-inputs -o result-install-build-inputs -L
 nix develop .#ci --command python tests/iso_install.py --iso result-iso/iso/nixos-zfs-cachyos-x86_64-linux.iso
 ```
 

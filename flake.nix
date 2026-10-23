@@ -48,36 +48,8 @@
       packages.${system} = {
         default = self.packages.${system}.iso;
         iso = installer.config.system.build.isoImage;
-        # Prime the VM's store for an offline installation of the same modules.
-        # The test still builds/installs the generated, machine-specific flake.
+        # Keep installed-system packages in the Actions cache as well as the ISO.
         install-closure = installed.config.system.build.toplevel;
-        install-build-inputs = pkgs.buildEnv {
-          name = "installation-build-inputs";
-          ignoreCollisions = true;
-          paths = with pkgs; [
-            stdenvNoCC
-            bash
-            coreutils
-            findutils
-            gnugrep
-            gnused
-            gawk
-            diffutils
-            perl
-            python3Minimal
-            jq
-            cpio
-            gzip
-            bzip2
-            xz
-            zstd
-            kmod
-            rsync
-            makeInitrdNGTool
-            systemd
-            nixos-install-tools
-          ];
-        };
       };
       formatter.${system} = pkgs.nixfmt;
       devShells.${system}.ci = pkgs.mkShellNoCC {

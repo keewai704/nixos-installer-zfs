@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Boot the release ISO, install its generated flake on ZFS, boot without ISO.
 
-Uses disposable QCOW2 disks, no host block devices and no VM networking.
-Requires: nix develop .#ci; the ISO and installation build inputs built by CI.
+Uses disposable QCOW2 disks and no host block devices. Installation uses QEMU
+user networking and the ISO's configured caches; other boots have no network.
+Requires: nix develop .#ci and the ISO built by CI.
 """
 
 import argparse
@@ -23,21 +24,15 @@ def host(*args, **kwargs):
     return subprocess.check_output(args, text=True, **kwargs).strip()
 
 
-def archive_paths(node):
-    yield node["path"]
-    for child in node.get("inputs", {}).values():
-        yield from archive_paths(child)
-
-
 class VM:
-    def __init__(self, work, mode, disk, *, iso=None, share=None):
+    def __init__(self, work, mode, disk, *, iso=None, network=False):
         self.log = (work / f"{mode}.log").open("w")
         kvm = os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK)
         args = [
             "-machine", "q35", "-accel", "kvm" if kvm else "tcg",
             "-cpu", "host" if kvm else "max", "-m", "6144", "-smp", "2",
             "-display", "none", "-serial", "stdio", "-monitor", "none",
-            "-no-reboot", "-nic", "none",
+            "-no-reboot", "-nic", "user,model=virtio-net-pci" if network else "none",
             "-drive", f"file={disk},if=virtio,format=qcow2",
         ]
         if mode != "bios-live":
@@ -52,11 +47,6 @@ class VM:
             args += ["-cdrom", str(iso), "-boot", "order=d"]
         else:
             args += ["-boot", "order=c"]
-        if share:
-            args += [
-                "-virtfs",
-                f"local,path={share},mount_tag=testdata,security_model=none,readonly=on",
-            ]
         print(f"Starting {mode} ({'KVM' if kvm else 'TCG'})", flush=True)
         self.child = pexpect.spawn("qemu-system-x86_64", args, encoding="utf-8", codec_errors="replace", timeout=600)
         self.child.logfile_read = self.log
@@ -103,24 +93,17 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     if any(work.iterdir()):
         raise RuntimeError("Use an empty work directory so old disks/logs cannot affect the test.")
-    share = work / "share"
-    share.mkdir()
     expected = json.loads(host(
         "nix", "eval", "--json", ".#nixosConfigurations.installer.config.environment.etc",
         "--apply", 'etc: builtins.fromJSON etc."nixos-installer/versions.json".text',
     ))
-    archived = json.loads(host("nix", "flake", "archive", "--json", "--no-write-lock-file"))
-    roots = [str(Path("result-install").resolve()), str(Path("result-install-build-inputs").resolve())]
-    paths = set(host("nix-store", "--query", "--requisites", *roots).splitlines())
-    paths.update(archive_paths(archived))
-    # The immutable source in the ISO and all input sources must be registered
-    # locally; this allows the installed flake to evaluate without the network.
-    with (share / "closure.nar").open("wb") as output:
-        subprocess.run(["nix-store", "--export", *sorted(paths)], stdout=output, check=True)
-
     disk = work / "target.qcow2"
     subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), "32G"], check=True)
-    results = {"expected": expected, "tests": [], "network": "disabled"}
+    results = {
+        "expected": expected,
+        "tests": [],
+        "network": "UEFI installation: QEMU user networking, no forwarded ports; BIOS and installed boot: no NIC",
+    }
 
     def tools(vm):
         for command in ("claude --version", "codex --version", "git --version", "gh --version"):
@@ -135,33 +118,27 @@ def main():
         vm.stop()
         results["tests"].append("BIOS: actual ISO boots; CachyOS, ZFS and all four CLIs work")
 
-    with contextlib.closing(VM(work, "uefi-live", disk, iso=iso, share=share)) as vm:
+    with contextlib.closing(VM(work, "uefi-live", disk, iso=iso, network=True)) as vm:
         tools(vm)
+        vm.run("curl --fail --silent --show-error --connect-timeout 10 --retry 8 --retry-delay 2 --retry-all-errors https://cache.nixos.org/nix-cache-info", timeout=180)
         # Refusal paths must leave the disposable disk unchanged.
         vm.run("install-zfs --help")
         _, code = vm.run("printf 'NO\\n' | install-zfs --disk /dev/vda --prepare-only", ok=False)
         if code == 0:
             raise AssertionError("Installer accepted an incorrect wipe confirmation")
         vm.run("test -z \"$(lsblk -nro FSTYPE /dev/vda)\"")
-        vm.run("mkdir -p /run/testdata && modprobe 9pnet_virtio && mount -t 9p -o trans=virtio,version=9p2000.L testdata /run/testdata")
-        vm.run("nix-store --import < /run/testdata/closure.nar", timeout=1800)
         vm.run("printf 'ERASE /dev/vda\\n' | install-zfs --disk /dev/vda --hostname ci-zfs --prepare-only", timeout=600)
         vm.run("grep -q 'ci-zfs' /mnt/etc/nixos/machine.nix")
-        # Evaluation happens in the target store as well. Import the same trusted
-        # CI fixture there, including locked input sources and build dependencies.
-        # nix-store exports do not retain content-address metadata for nix copy.
-        vm.run("nix-store --store /mnt --import < /run/testdata/closure.nar", timeout=1800)
-        # nixos-install builds in /mnt's store and copies existing packages from
-        # the live store through its local substituter. QEMU has no network.
-        vm.run("nixos-install --flake /mnt/etc/nixos#installed --no-root-passwd --no-channel-copy --option substituters 'auto?trusted=1' --option accept-flake-config false", timeout=2400)
-        # Set an empty console password only inside this disposable, networkless VM.
+        # Use the same network/caches as a normal install of the generated flake.
+        vm.run("nixos-install --flake /mnt/etc/nixos#installed --no-root-passwd --no-channel-copy --option accept-flake-config false", timeout=2400)
+        # Set an empty target password only for the following networkless boot.
         # The published ISO/source do not grant passwordless installed-system login.
         vm.run("nixos-enter --root /mnt --command 'passwd -d root'")
         vm.run("echo zfs-root-persistent > /mnt/root/persistence-test; echo zfs-home-persistent > /mnt/home/persistence-test; echo zfs-nix-persistent > /mnt/nix/persistence-test")
         vm.run("test -f /mnt/boot/EFI/BOOT/BOOTX64.EFI && test -f /mnt/boot/loader/loader.conf")
         vm.run("sync && umount -R /mnt && zpool export rpool")
         vm.stop()
-        results["tests"].append("UEFI: real nixos-install builds and installs the generated flake on ZFS offline")
+        results["tests"].append("UEFI: real nixos-install builds and installs the generated flake on ZFS using configured public caches")
 
     with contextlib.closing(VM(work, "installed-boot", disk)) as vm:
         tools(vm)
