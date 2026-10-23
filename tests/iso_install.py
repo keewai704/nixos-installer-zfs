@@ -147,7 +147,8 @@ class VM:
 
     def page(self, name, timeout=120):
         query = "journalctl -b _SYSTEMD_USER_UNIT=zfs-installer.service --no-pager | grep -Fq " + shlex.quote("GUI_PAGE " + name)
-        self.run("timeout " + str(timeout) + " bash -c " + shlex.quote(f"until {query}; do sleep 1; done"), timeout=timeout + 20)
+        failed = "journalctl -b _SYSTEMD_USER_UNIT=zfs-installer.service --no-pager | grep -Fq GUI_INSTALL_FAILED"
+        self.run("timeout " + str(timeout) + " bash -c " + shlex.quote(f"until {query}; do if {failed}; then exit 1; fi; sleep 1; done"), timeout=timeout + 20)
 
     def screenshot(self, name):
         ppm = self.work / (name + ".ppm")
@@ -244,6 +245,7 @@ def main():
         vm.screenshot("installing")
         # The GUI worker itself invokes nixos-install; no substitute install path.
         vm.page("Complete", timeout=3600)
+        vm.run("journalctl -b _SYSTEMD_USER_UNIT=zfs-installer.service --no-pager")
         vm.screenshot("installation-complete")
         vm.run("! zpool list -H -o name 2>/dev/null | grep -qx rpool")
         vm.run("zpool import -N -R /mnt rpool && mount -t zfs rpool/root /mnt && mount -t zfs rpool/home /mnt/home && mount -t zfs rpool/nix /mnt/nix")

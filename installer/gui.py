@@ -252,6 +252,7 @@ class Installer(QWidget):
                 self.progress.setValue(int(percent))
                 self.status.setText(message)
             self.log.appendPlainText(line)
+            print(line, flush=True)
 
     def process_error(self, error):
         if error == QProcess.ProcessError.FailedToStart:
