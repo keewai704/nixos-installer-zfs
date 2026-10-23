@@ -1,5 +1,6 @@
 /result*
 /.direnv/
 /.vm-test/
+/.ci-cache/
 __pycache__/
 *.pyc

@@ -40,6 +40,19 @@ jobs:
             max-jobs = 2
             cores = 4
 
+      - name: Restore previously built packages for this lock file
+        id: nix-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ci-cache/
+          key: nix-runtime-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+
+      - name: Import cached Nix store paths
+        run: |
+          if test -f .ci-cache/closure.nar.gz; then
+            gzip -dc .ci-cache/closure.nar.gz | nix-store --import
+          fi
+
       - name: Evaluate all outputs with the committed lock file
         run: nix flake check --no-build --no-write-lock-file --print-build-logs
 
@@ -54,6 +67,23 @@ jobs:
           nix build --no-write-lock-file --print-build-logs .#iso -o result-iso
           nix build --no-write-lock-file --print-build-logs .#install-closure -o result-install
           nix build --no-write-lock-file --print-build-logs .#install-build-inputs -o result-install-build-inputs
+
+      - name: Export built packages before running the VM tests
+        if: github.event_name != 'pull_request' && steps.nix-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .ci-cache
+          nix-store --query --requisites "$(readlink -f result-install)" \
+            "$(readlink -f result-install-build-inputs)" > .ci-cache/paths
+          mapfile -t cache_paths < .ci-cache/paths
+          test "${#cache_paths[@]}" -gt 0
+          nix-store --export "${cache_paths[@]}" | gzip -1 > .ci-cache/closure.nar.gz
+
+      - name: Save compiled kernel, ZFS and installation dependencies
+        if: github.event_name != 'pull_request' && steps.nix-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ci-cache/
+          key: nix-runtime-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}
 
       - name: Boot the actual ISO in BIOS and UEFI and install/reboot ZFS
         run: |
