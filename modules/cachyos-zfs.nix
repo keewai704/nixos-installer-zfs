@@ -23,4 +23,5 @@
     "nix-command"
     "flakes"
   ];
+  nix.extraOptions = builtins.readFile ../nix/binary-caches.conf;
 }

@@ -146,7 +146,9 @@ def main():
         vm.run("nix-store --import < /run/testdata/closure.nar", timeout=1800)
         vm.run("printf 'ERASE /dev/vda\\n' | install-zfs --disk /dev/vda --hostname ci-zfs --prepare-only", timeout=600)
         vm.run("grep -q 'ci-zfs' /mnt/etc/nixos/machine.nix")
-        vm.run("nixos-install --flake /mnt/etc/nixos#installed --no-root-passwd --no-channel-copy --option substitute false --option accept-flake-config false", timeout=2400)
+        # nixos-install builds in /mnt's store and copies existing packages from
+        # the live store through its local substituter. QEMU has no network.
+        vm.run("nixos-install --flake /mnt/etc/nixos#installed --no-root-passwd --no-channel-copy --option substituters 'auto?trusted=1' --option accept-flake-config false", timeout=2400)
         # Set an empty console password only inside this disposable, networkless VM.
         # The published ISO/source do not grant passwordless installed-system login.
         vm.run("nixos-enter --root /mnt --command 'passwd -d root'")

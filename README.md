@@ -81,12 +81,15 @@ sudo nixos-rebuild switch --flake /etc/nixos#installed
 Linux上のNixを使います。カーネルのソースビルドに備えて、十分なディスク容量とメモリを確保してください。
 
 ```sh
+export NIX_CONFIG="$(cat nix/binary-caches.conf)"
 nix --extra-experimental-features 'nix-command flakes' flake check --no-build --no-write-lock-file
 nix --extra-experimental-features 'nix-command flakes' build .#iso --no-write-lock-file -L -o result-iso
 ls result-iso/iso/
 ```
 
-2026-10-23時点で、xddxddの旧バイナリキャッシュには[停止報告](https://github.com/xddxdd/nix-cachyos-kernel/issues/110)があります。このリポジトリのActionsは`cache.nixos.org`だけを利用し、カーネルとZFSを必要に応じてソースからビルドします。停止中のキャッシュやその署名鍵は設定しません。初回のActions実行には長時間かかる場合があります。
+`cache.nixos.org`に加え、[上流で案内されているCachyOSミラー](https://github.com/xddxdd/nix-cachyos-kernel/issues/89)の`cache.xinux.uz`と、sadjowの`claude-code.cachix.org`・`codex-cli.cachix.org`を利用します。[nix/binary-caches.conf](nix/binary-caches.conf)の同じURL・署名鍵をActions、ISO、インストール先で共用します。署名検証は有効のままです。入力が一致するキャッシュがあればダウンロードし、なければソースからビルドします。
+
+2026-10-23に、固定したカーネル・カーネルモジュール・ZFSのストアパスが`cache.xinux.uz`に存在することを確認しました。xddxddの旧Atticキャッシュには[停止報告](https://github.com/xddxdd/nix-cachyos-kernel/issues/110)があるため、そのURL・旧署名鍵は設定していません。キャッシュの利用可能性や、Nixpkgsの変更によるヒット率は保証されません。
 
 ビルド済みパッケージはロックファイルごとにGitHub Actionsのキャッシュへ保存し、同じ入力を使う次回実行で再利用します。VMテストより先に保存するため、テストの修正時にもカーネルを毎回コンパイルする必要はありません。PRからはキャッシュを書き込みません。
 
