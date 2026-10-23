@@ -72,7 +72,7 @@ def host(*args, **kwargs):
 
 
 class VM:
-    def __init__(self, work, mode, disk, *, iso=None, network=False, password=None):
+    def __init__(self, work, mode, disk, *, iso=None, network=False, password=None, direct_boot=None):
         self.work, self.mode = work, mode
         self.log = (work / f"{mode}.log").open("w")
         kvm = os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK)
@@ -98,6 +98,13 @@ class VM:
             args += ["-cdrom", str(iso), "-boot", "order=d"]
         else:
             args += ["-boot", "order=c"]
+        if direct_boot:
+            # Use this ISO's own kernel/initrd and root filesystem, with the
+            # same extra argument as the stock "No modesetting" boot entry.
+            args += [
+                "-kernel", direct_boot["kernel"], "-initrd", direct_boot["initrd"],
+                "-append", " ".join(direct_boot["params"] + ["nomodeset"]),
+            ]
         print(f"Starting {mode} ({'KVM' if kvm else 'TCG'})", flush=True)
         self.child = pexpect.spawn("qemu-system-x86_64", args, encoding="utf-8", codec_errors="replace", timeout=600)
         self.child.logfile_read = self.log
@@ -185,6 +192,26 @@ class VM:
         self.log.close()
 
 
+def firmware_graphics(work, disk, iso, boot=None):
+    if boot is None:
+        boot = json.loads(host(
+            "nix", "eval", "--json", ".#nixosConfigurations.installer.config",
+            "--apply", """c: {
+                kernel = "${c.boot.kernelPackages.kernel}/${c.system.boot.loader.kernelFile}";
+                initrd = "${c.system.build.initialRamdisk}/${c.system.boot.loader.initrdFile}";
+                params = [ "init=${c.system.build.toplevel}/init" ] ++ c.boot.kernelParams;
+            }""",
+        ))
+    with contextlib.closing(VM(work, "uefi-firmware-graphics", disk, iso=iso, direct_boot=boot)) as vm:
+        vm.run("grep -qw nomodeset /proc/cmdline && ! test -e /sys/module/virtio_gpu")
+        vm.run("ls -l /sys/class/drm/card*/device/driver; ls -l /dev/dri /dev/udmabuf", ok=False)
+        vm.desktop()
+        vm.page("Welcome")
+        vm.run(vm.user("umbriel windows") + " | grep -F 'NixOS Installer'")
+        vm.screenshot("firmware-graphics-desktop")
+        vm.stop()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iso", type=Path, required=True)
@@ -223,6 +250,9 @@ def main():
         vm.screenshot("bios-desktop")
         vm.stop()
         results["tests"].append("BIOS: actual ISO boots into Umbriel + Noctalia v5 and the graphical wizard; CachyOS, ZFS and all four CLIs work")
+
+    firmware_graphics(work, disk, iso)
+    results["tests"].append("UEFI: No modesetting boots the GUI with firmware graphics and software rendering, without the virtio GPU driver")
 
     with contextlib.closing(VM(work, "uefi-live", disk, iso=iso, network=True)) as vm:
         tools(vm)

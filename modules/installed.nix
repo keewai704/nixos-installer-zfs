@@ -13,8 +13,8 @@
   ];
   boot.zfs.devNodes = "/dev/disk/by-partuuid";
   boot.kernelParams = [
-    "console=tty0"
     "console=ttyS0,115200n8"
+    "console=tty0"
   ];
   networking.networkmanager.enable = true;
   networking.hostName = lib.mkDefault "nixos";

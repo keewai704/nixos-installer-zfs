@@ -55,11 +55,20 @@ in
   # This ID belongs only to the live environment, not the installed machine.
   networking.hostId = "8425a701";
   boot.kernelModules = [ "zfs" ];
+  # A splash screen can hide driver failures and delay greetd waiting for
+  # Plymouth. Keep the real monitor as /dev/console, including on PCs with no
+  # serial port; serial output remains available to the VM tests.
+  boot.plymouth.enable = lib.mkForce false;
+  boot.consoleLogLevel = 7;
+  boot.initrd.verbose = true;
   boot.kernelParams = [
-    "console=tty0"
     "console=ttyS0,115200n8"
+    "console=tty0"
+    "systemd.show_status=1"
+    "rd.systemd.show_status=1"
   ];
-  boot.loader.timeout = lib.mkForce 5;
+  boot.loader.timeout = lib.mkForce 10;
+  isoImage.configurationName = "Umbriel + Noctalia v5";
   image.baseName = lib.mkForce "nixos-zfs-cachyos-x86_64-linux";
   isoImage.volumeID = "NIXOS_ZFS";
   isoImage.makeEfiBootable = true;
