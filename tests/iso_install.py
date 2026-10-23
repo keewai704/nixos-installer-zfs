@@ -274,7 +274,8 @@ def main():
         vm.run("grep -qx zfs-root-persistent /root/persistence-test && grep -qx zfs-home-persistent /home/persistence-test && grep -qx zfs-nix-persistent /nix/persistence-test")
         vm.run("zpool status -x | grep -q 'all pools are healthy'")
         vm.run("getent shadow root | cut -d: -f2 | grep -qx '!' && test \"$(id -u ciuser)\" -ge 1000")
-        vm.run("timeout 120 bash -c 'until pgrep -x regreet; do sleep 1; done'", timeout=140)
+        # Nix's GTK wrapper runs .regreet-wrapped, so match its executable path.
+        vm.run("timeout 120 bash -c 'until systemctl is-active --quiet greetd && pgrep -f \"/bin/[.]?regreet(-wrapped)?( |$)\" >/dev/null; do sleep 1; done'", timeout=140)
         vm.screenshot("installed-login")
         # ReGreet selects the sole regular user. Log in with the GUI-created password.
         vm.qmp.key("ret")
