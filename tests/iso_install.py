@@ -58,7 +58,8 @@ class VM:
         else:
             self.child.expect(re.compile(r"login: ?$", re.MULTILINE))
             self.child.sendline("root")
-            self.child.expect_exact("[root@ci-zfs:")
+            # NixOS inserts an OSC window-title sequence after the opening '['.
+            self.child.expect_exact("root@ci-zfs:", timeout=60)
         self.child.sendline("stty -echo")
         self.run("id -u | grep -qx 0", timeout=30)
 
