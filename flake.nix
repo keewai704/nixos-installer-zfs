@@ -1,5 +1,5 @@
 {
-  description = "NixOS ZFS installer with xddxdd's CachyOS kernel and coding tools";
+  description = "Graphical NixOS ZFS installer with Umbriel, Noctalia v5 and CachyOS";
 
   inputs = {
     cachyos.url = "github:xddxdd/nix-cachyos-kernel/release";
@@ -14,6 +14,9 @@
       url = "github:sadjow/codex-cli-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Preserve upstream inputs: their cached binaries depend on these exact pins.
+    umbriel.url = "github:noctalia-dev/umbriel/cachix";
+    noctalia.url = "github:noctalia-dev/noctalia/cachix";
   };
 
   outputs =
@@ -27,6 +30,7 @@
         modules = [
           ./modules/cachyos-zfs.nix
           ./modules/tools.nix
+          ./modules/desktop.nix
           ./modules/installer.nix
         ];
       };
@@ -36,6 +40,7 @@
         modules = [
           ./modules/cachyos-zfs.nix
           ./modules/tools.nix
+          ./modules/desktop.nix
           ./modules/installed.nix
           ./hardware-configuration.nix
           ./machine.nix
@@ -50,11 +55,19 @@
         iso = installer.config.system.build.isoImage;
         # Keep installed-system packages in the Actions cache as well as the ISO.
         install-closure = installed.config.system.build.toplevel;
+        live-closure = installer.config.system.build.toplevel;
+        umbriel = inputs.umbriel.packages.${system}.default;
+        noctalia = inputs.noctalia.packages.${system}.default;
+        installer-app = installer.config.system.build.installerApp;
       };
       formatter.${system} = pkgs.nixfmt;
       devShells.${system}.ci = pkgs.mkShellNoCC {
         packages = [
-          (pkgs.python3.withPackages (ps: [ ps.pexpect ]))
+          (pkgs.python3.withPackages (ps: [
+            ps.pexpect
+            ps.pillow
+            ps.pyside6
+          ]))
           pkgs.qemu
           pkgs.shellcheck
           pkgs.nixfmt

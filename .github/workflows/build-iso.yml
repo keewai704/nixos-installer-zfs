@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .ci-cache/
-          key: nix-runtime-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          key: nix-desktop-v2-${{ runner.os }}-${{ hashFiles('flake.lock') }}
 
       - name: Import cached Nix store paths
         run: |
@@ -66,9 +66,10 @@ jobs:
 
       - name: Check scripts and Nix formatting
         run: |
-          nix develop .#ci --command shellcheck scripts/install-zfs.sh
+          nix develop .#ci --command shellcheck scripts/prepare-zfs.sh
           nix develop .#ci --command bash -c 'git ls-files "*.nix" -z | xargs -0 nixfmt --check'
-          python3 -m py_compile tests/iso_install.py
+          python3 -m py_compile installer/*.py tests/*.py
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Build the installer ISO and installed-system package cache
         run: |
@@ -79,7 +80,8 @@ jobs:
         if: github.event_name != 'pull_request' && steps.nix-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .ci-cache
-          nix-store --query --requisites "$(readlink -f result-install)" > .ci-cache/paths
+          live=$(nix eval --raw .#live-closure.outPath)
+          nix-store --query --requisites "$(readlink -f result-install)" "$live" | sort -u > .ci-cache/paths
           mapfile -t cache_paths < .ci-cache/paths
           test "${#cache_paths[@]}" -gt 0
           nix-store --export "${cache_paths[@]}" | gzip -1 > .ci-cache/closure.nar.gz
@@ -89,9 +91,9 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .ci-cache/
-          key: nix-runtime-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          key: nix-desktop-v2-${{ runner.os }}-${{ hashFiles('flake.lock') }}
 
-      - name: Boot the actual ISO in BIOS and UEFI and install/reboot ZFS
+      - name: Test Umbriel and Noctalia v5 and drive the graphical ZFS installation
         run: |
           iso=$(find -L result-iso/iso -maxdepth 1 -name '*.iso' -print -quit)
           test -n "$iso"
@@ -106,6 +108,7 @@ jobs:
             --apply 'etc: builtins.fromJSON etc."nixos-installer/versions.json".text' > artifacts/versions.json
           (cd artifacts && sha256sum ./*.iso > SHA256SUMS)
           cat .vm-test/results.json >> "$GITHUB_STEP_SUMMARY"
+          cp .vm-test/*desktop.png artifacts/
 
       - name: Upload verified installation ISO
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -124,6 +127,7 @@ jobs:
           include-hidden-files: true
           path: |
             .vm-test/*.log
+            .vm-test/*.png
             .vm-test/results.json
           if-no-files-found: ignore
           retention-days: 14

@@ -3,13 +3,12 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: sudo install-zfs --disk /dev/disk/by-id/DEVICE [--hostname nixos] [--prepare-only]
+Internal GUI worker: prepare-zfs.sh --disk DEVICE --hostname HOST --prepare-only
 
 Single-disk, UEFI installation. ERASES THE ENTIRE SELECTED DISK.
 Creates a 1 GiB FAT32 ESP and rpool/{root,home,nix} ZFS datasets.
 Requires typing "ERASE /dev/DEVICE" before any disk modification.
---prepare-only stops after mounting /mnt and generating /mnt/etc/nixos.
-The default completes nixos-install and prompts for the root password.
+Only prepares /mnt and generates /mnt/etc/nixos. Invoked by the graphical installer.
 EOF
 }
 
@@ -28,6 +27,7 @@ while (( $# )); do
 done
 
 [[ $EUID == 0 ]] || die "Run with sudo."
+"$prepare_only" || die "This worker only prepares disks for the graphical installer."
 [[ -n $disk ]] || die "Specify --disk; use lsblk to identify the target."
 [[ $hostname =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]] || die "Invalid hostname."
 [[ -d /sys/firmware/efi ]] || die "Boot the ISO in UEFI mode to install."
@@ -35,7 +35,7 @@ disk=$(readlink -f -- "$disk")
 [[ -b $disk ]] || die "Not a block device: $disk"
 [[ $(lsblk -dnro TYPE "$disk") == disk ]] || die "Select a whole disk."
 [[ $(blockdev --getro "$disk") == 0 ]] || die "Disk is read-only."
-(( $(blockdev --getsize64 "$disk") >= 16 * 1024 * 1024 * 1024 )) || die "Disk must be at least 16 GiB."
+(( $(blockdev --getsize64 "$disk") >= 32 * 1024 * 1024 * 1024 )) || die "Disk must be at least 32 GiB."
 if lsblk -nrpo MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then
   die "The disk or one of its partitions is mounted or used as swap."
 fi
@@ -89,14 +89,4 @@ host_id=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
 printf '{ ... }: { networking.hostName = "%s"; networking.hostId = "%s"; }\n' \
   "$hostname" "$host_id" > /mnt/etc/nixos/machine.nix
 
-if "$prepare_only"; then
-  printf '\nPrepared /mnt. Review /mnt/etc/nixos, then run:\n'
-  printf '  sudo nixos-install --flake /mnt/etc/nixos#installed\n'
-  printf '  sudo umount -R /mnt\n  sudo zpool export rpool\n  sudo reboot\n'
-else
-  nixos-install --flake /mnt/etc/nixos#installed
-  sync
-  umount -R /mnt
-  zpool export rpool
-  printf '\nInstallation finished. Remove the ISO/USB and run: reboot\n'
-fi
+printf '\nZFS datasets prepared for the graphical installation worker.\n'
