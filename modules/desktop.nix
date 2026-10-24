@@ -30,6 +30,15 @@ let
   '';
   session = pkgs.writeShellScriptBin "nixos-umbriel-session" ''
     set -eu
+    # The stock ISO's "No modesetting" entry retains the UEFI framebuffer.
+    # ALLOW_SOFTWARE alone still tries to find a GPU render node in UmbrielFX.
+    # Select its software EGL device explicitly when native KMS is disabled.
+    case " $(< /proc/cmdline) " in
+      *" nomodeset "*)
+        export WLR_RENDERER_FORCE_SOFTWARE=1
+        export LIBGL_ALWAYS_SOFTWARE=1
+        ;;
+    esac
     config_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/noctalia"
     if [ ! -e "$config_dir/config.toml" ]; then
       mkdir -p "$config_dir"
@@ -83,6 +92,9 @@ in
   xdg.portal.extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
   # Permit llvmpipe on machines/VMs without an accelerated driver.
   environment.sessionVariables.WLR_RENDERER_ALLOW_SOFTWARE = "1";
+  # Umbriel's software renderer needs DMA-BUF-backed buffers. systemd's stock
+  # uaccess rule grants the active local session access; no world-writable node.
+  boot.kernelModules = [ "udmabuf" ];
   environment.systemPackages = [
     session
     pkgs.foot

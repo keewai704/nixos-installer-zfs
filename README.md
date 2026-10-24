@@ -54,6 +54,14 @@ GUIは一般ユーザーで実行し、権限を持つワーカーが検証済�
 sudo nixos-rebuild switch --flake /etc/nixos#installed
 ```
 
+## 起動直後に画面が止まる場合
+
+起動中のカーネル・systemdのログをモニターに表示します。シリアル出力も残しますが、`/dev/console`はローカル画面を優先し、Plymouthのスプラッシュと終了待ちは使いません。ブートメニューの待ち時間は10秒です。
+
+通常起動で画面が止まる場合は、USBを**UEFIモード**で起動し、標準ブートメニューの **Options → No modesetting → NixOS … Umbriel + Noctalia v5** を選択してください。この経路ではネイティブGPUドライバーのモード設定を避け、UEFIのフレームバッファとCPU描画で同じGUIインストーラーを起動します。UmbrielのソフトウェアEGLデバイスを明示的に選択し、DMA-BUF用デバイスへのアクセスはsystemdのアクティブセッション向け権限を使います。
+
+`virt/tdx: TDX not supported by the host platform`は、[TDX非対応CPUでも表示されることがあるメッセージ](https://lists.openwall.net/linux-kernel/2026/07/29/845)です。この1行だけでは停止原因を特定できません。互換起動でも止まる場合は、画面の最後のログとCPU・GPUの型番、USBの作成方法を確認してください。実機固有の問題が解決したことは、その実機で再起動するまで確認できません。
+
 ## キャッシュとビルド
 
 Nix公式キャッシュに加え、次の署名付きキャッシュをActions・ISO・インストール先で共有します。URLと署名鍵は[nix/binary-caches.conf](nix/binary-caches.conf)で管理し、署名検証を維持します。
@@ -82,10 +90,11 @@ nix --extra-experimental-features 'nix-command flakes' build .#iso --no-write-lo
 配布する実際のISOをQEMUで起動し、次を検証します。
 
 1. BIOS/UEFIでUmbriel、Noctalia v5、GUIウィザードが起動すること。CachyOS、対応ZFS、指定の4つのCLIが動くこと。
-2. QEMUのキーボード入力でGUIのディスク選択・ユーザー作成・確認画面を操作すること。不正な消去文字列ではディスクが変化しないこと。
-3. GUI自身が実際の`nixos-install`を実行し、ZFSへのインストールが完了すること。
-4. ISOを外し、ネットワークなしでインストール先から起動できること。作成したユーザーのパスワードでログインし、Umbriel + Noctalia v5が起動すること。
-5. ZFSの`/`・`/home`・`/nix`と保存データ、プールの正常性、CLI、失敗したsystemdユニットがないこと。
+2. 同じISOのカーネル・initrd・ルートを使い、`nomodeset`を加えたUEFI起動で、virtio GPUを画面出力に使わずにsimpledrmとCPU描画で同じGUIが表示されること。
+3. QEMUのキーボード入力でGUIのディスク選択・ユーザー作成・確認画面を操作すること。不正な消去文字列ではディスクが変化しないこと。
+4. GUI自身が実際の`nixos-install`を実行し、ZFSへのインストールが完了すること。
+5. ISOを外し、ネットワークなしでインストール先から起動できること。作成したユーザーのパスワードでログインし、Umbriel + Noctalia v5が起動すること。
+6. ZFSの`/`・`/home`・`/nix`と保存データ、プールの正常性、CLI、失敗したsystemdユニットがないこと。
 
 使い捨てのQCOW2ディスクだけをVMに接続します。実機のブロックデバイスは渡しません。インストール中だけQEMUのユーザーネットワークを使い、ポートは転送しません。テストでもGUIでパスワードを設定し、rootのロックを維持します。シリアルログと画面キャプチャを別のArtifactにも保存します。実機固有のストレージ・Wi-Fi・GPU・Secure Bootの互換性はVM検証の対象外です。
 

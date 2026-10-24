@@ -203,10 +203,14 @@ def firmware_graphics(work, disk, iso, boot=None):
             }""",
         ))
     with contextlib.closing(VM(work, "uefi-firmware-graphics", disk, iso=iso, direct_boot=boot)) as vm:
-        vm.run("grep -qw nomodeset /proc/cmdline && ! test -e /sys/module/virtio_gpu")
+        # nomodeset prevents binding the native GPU, not loading its module.
+        # Check the driver actually serving the only display and no render node.
+        vm.run("grep -qw nomodeset /proc/cmdline && test \"$(readlink -f /sys/class/drm/card0/device/driver)\" = /sys/bus/platform/drivers/simple-framebuffer && test ! -e /dev/dri/renderD128")
         vm.run("ls -l /sys/class/drm/card*/device/driver; ls -l /dev/dri /dev/udmabuf", ok=False)
         vm.desktop()
         vm.page("Welcome")
+        vm.run("runuser -u nixos -- test -r /dev/udmabuf && runuser -u nixos -- test -w /dev/udmabuf")
+        vm.run("journalctl -b _SYSTEMD_USER_UNIT=umbriel.service --no-pager | grep -F 'GL renderer: llvmpipe'")
         vm.run(vm.user("umbriel windows") + " | grep -F 'NixOS Installer'")
         vm.screenshot("firmware-graphics-desktop")
         vm.stop()
@@ -231,10 +235,13 @@ def main():
     results = {
         "expected": expected,
         "tests": [],
-        "network": "UEFI installation: QEMU user networking, no forwarded ports; BIOS and installed boot: no NIC",
+        "network": "UEFI installation: QEMU user networking, no forwarded ports; all other boots: no NIC",
     }
 
     def tools(vm):
+        # C marks the kernel's /dev/console. The real screen must stay primary
+        # even though this test controls a secondary serial login.
+        vm.run(r"grep -E '^tty0[[:space:]]+.*\([^)]*C' /proc/consoles")
         for command in ("claude --version", "codex --version", "git --version", "gh --version"):
             vm.run(command, timeout=120)
         vm.run("modprobe zfs && zfs version && zpool version")
@@ -252,7 +259,7 @@ def main():
         results["tests"].append("BIOS: actual ISO boots into Umbriel + Noctalia v5 and the graphical wizard; CachyOS, ZFS and all four CLIs work")
 
     firmware_graphics(work, disk, iso)
-    results["tests"].append("UEFI: No modesetting boots the GUI with firmware graphics and software rendering, without the virtio GPU driver")
+    results["tests"].append("UEFI: No modesetting boots the GUI with simpledrm firmware graphics and llvmpipe software rendering, without native GPU modesetting")
 
     with contextlib.closing(VM(work, "uefi-live", disk, iso=iso, network=True)) as vm:
         tools(vm)
